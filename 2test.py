@@ -35,6 +35,8 @@ def detect_mutants_from_transcriptomic(reads2,bc,upstream="CATCGAT", downstream=
     sys.stderr.write("Read parsing done\n")
 
     for read_bc in read2_dict:
+        if len(read2_dict[read_bc])==0:
+            continue
         highest_match=process.extractOne(read2_dict[read_bc], bc_list)
 
         if not highest_match:
