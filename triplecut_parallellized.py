@@ -1,7 +1,9 @@
-import subprocess, sys, os, copy, gzip
+import subprocess, sys, os, copy
 from Bio import SeqIO
 from io import StringIO
 from fuzzywuzzy import process
+from multiprocessing import Pool
+from functools import partial
 
 def main(read2,bc_file):
     """Helper function that contains the overall process. This function will then be passed to multiprocessing commands"""
@@ -14,38 +16,23 @@ def main(read2,bc_file):
 #    lineage_dict=copy.deepcopy(mutant_dict) #Deep copy it to store the lineage counts
 
     read2_bc_dict=run_cutadapt(read2,"CGAGCTCGAATTCATCGAT","CTACGAGACCGACACCG")#Extract the mutant bc from the reads
-    sys.stderr.write(str(len(read2_bc_dict.keys())))
-    for r2 in read2_bc_dict:
-        if len(read2_bc_dict[r2])==0:
-            continue
+    sys.stderr.write(str(len(read2_bc_dict.keys()))+"\n")
 
-        highest_match=process.extractOne(read2_bc_dict[r2],bc_dict.values())
+    with Pool(10) as pool:
+        assign_mutant_partial=partial(assign_mutant,mutant_dict,read2_bc_dict,bc_dict,bc_list,bc_ids)
+        res=pool.map(assign_mutant_partial,read2_bc_dict.keys())
+        pool.close()
+        pool.join()
+    return res
+    # for dicti in res:
+    #     for k,v in dicti.items():
+    #         if len(dicti[k])>0:
+    #             mutant_dict[k]=v
+    # mutant_dict={k:v for x in res for k,v in x.items()}
 
-        if not highest_match:
-            continue
-        elif not highest_match[1]>=95:
-            continue
-
-        id_location=bc_list.index(highest_match[0])
-        id=bc_ids[id_location]
-
-        mutant_dict[id].append(r2)
-
+    mutant_dict=dict([(k,v) for dicti in res for k,v in dicti.items() if len(v)>0])
     mutant_dict=dict([(k,v) for k,v in mutant_dict.items() if len(v)>0])
     return mutant_dict
-
-    lineage_dict=run_cutadapt(read2,"AACGCCGCCATCCAGTGTCGAAAACGAGCTCGAATTCATCGAT")
-
-    mutant_lineages=dict()
-
-    for mutant in mutant_dict:
-        lineages=[lineage_dict[x] for x in mutant_dict[mutant]]
-        lineages_unique=set(lineages)
-        for lin in lineages_unique:
-            new_id=mutant+lin
-            mutant_lineages[new_id]=lineages.count(lin)
-
-    return results
 
 def run_cutadapt(target_file,target1,target2=""):
 
@@ -77,3 +64,19 @@ def parse_barcodes(bc):
         bc_dict[sequence.id]=str(sequence.seq)[-37:-17]
 
     return bc_dict
+
+def assign_mutant(mutant_dict,read2_bc_dict,bc_dict,bc_list,bc_ids,key):
+    if len(read2_bc_dict[key])==0:
+        return None
+    highest_match=process.extractOne(read2_bc_dict[key],bc_dict.values())
+
+    if not highest_match:
+        return None
+    elif not highest_match[1]>=95:
+        return None
+
+    id_location=bc_list.index(highest_match[0])
+    id=bc_ids[id_location]
+
+    mutant_dict[id].append(key)
+    return mutant_dict
