@@ -1,4 +1,4 @@
-import subprocess, sys, os, copy
+import subprocess, sys, os, time
 from Bio import SeqIO
 from io import StringIO
 from fuzzywuzzy import process
@@ -23,16 +23,17 @@ def main(read2,bc_file):
         res=pool.map(assign_mutant_partial,read2_bc_dict.keys())
         pool.close()
         pool.join()
-    return res
+
+    return parse_multiprocess_out(mutant_dict,res)
+    # return res
     # for dicti in res:
     #     for k,v in dicti.items():
     #         if len(dicti[k])>0:
     #             mutant_dict[k]=v
     # mutant_dict={k:v for x in res for k,v in x.items()}
-
-    mutant_dict=dict([(k,v) for dicti in res for k,v in dicti.items() if len(v)>0])
-    mutant_dict=dict([(k,v) for k,v in mutant_dict.items() if len(v)>0])
-    return mutant_dict
+    #
+    # mutant_dict=dict([(k,v) for k,v in mutant_dict.items() if len(v)>0])
+    # return mutant_dict
 
 def run_cutadapt(target_file,target1,target2=""):
 
@@ -80,3 +81,23 @@ def assign_mutant(mutant_dict,read2_bc_dict,bc_dict,bc_list,bc_ids,key):
 
     mutant_dict[id].append(key)
     return mutant_dict
+
+def parse_multiprocess_out(mutant_dict,res):
+
+    res=list(filter(None,res))
+
+    for x in res:
+        for k,v in x.items():
+            mutant_dict[k]+=v
+
+
+    mutant_dict={k:set(v) for k,v in mutant_dict.items() if len(v)>0}
+
+    return mutant_dict
+
+def evaluate(r,bc_file):
+    t0=time.perf_counter()
+    test=main(r,bc_file)
+    t1=time.perf_counter()
+    total=t1-t0
+    return total,test
